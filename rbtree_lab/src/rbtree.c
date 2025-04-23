@@ -1,6 +1,5 @@
 #include "rbtree.h"
 
-
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -21,7 +20,7 @@ rbtree *new_rbtree(void) {
   return p;
 }
 
-// (정리) 후위순회로 트리의 모든 노드를 메모리 해제
+// 후위순회로 트리의 모든 노드를 메모리 해제
 static void delete_node(node_t *node, node_t *nil) {
   if (node == nil) return;
   // 왼쪽, 오른쪽 자식부터 먼저 해제
@@ -31,7 +30,7 @@ static void delete_node(node_t *node, node_t *nil) {
   free(node);
 }
 
-// (정리) 트리 전체 및 nil 노드까지 해제
+// 트리 전체 및 nil 노드까지 해제
 void delete_rbtree(rbtree *t) {
   delete_node(t->root, t->nil); // 모든 노드 해제
   free(t->nil);                 // nil 노드 해제
@@ -40,7 +39,6 @@ void delete_rbtree(rbtree *t) {
 
 static void left_rotate(rbtree *t, node_t *x) {
   node_t *y = x->right; // x의 오른쪽 자식을 y로 설정
-
   x->right = y->left; // y의 왼쪽 서브트리를 x의 오른쪽 자식으로 이동
 
   if (y->left != t->nil) {
@@ -63,7 +61,6 @@ static void left_rotate(rbtree *t, node_t *x) {
 
 static void right_rotate(rbtree *t, node_t *x) {
   node_t *y = x->left; // x의 왼쪽 자식을 y로 설정
-
   x->left = y->right; // y의 오른쪽 서브트리를 x의 왼쪽 자식으로 이동
 
   if (y->right != t->nil) {
@@ -84,15 +81,12 @@ static void right_rotate(rbtree *t, node_t *x) {
   x->parent = y; // x의 부모를 y로 설정
 }
 
-
-
 void insert_fixup(rbtree *t, node_t *z) {
   // 삽입 후 레드-블랙 트리의 속성을 복구하는 함수
   // z: 삽입된 노드
 
   // 부모가 RED인 경우에만 속성이 깨질 수 있으므로 반복
   while (z->parent->color == RBTREE_RED) {
-
     // 부모가 조부모의 왼쪽 자식인 경우
     if (z->parent == z->parent->parent->left) {
       node_t *y = z->parent->parent->right; // 삼촌 노드
@@ -168,14 +162,10 @@ node_t *rbtree_insert(rbtree *t, const key_t key) {
   // 삽입할 위치 탐색
   while (x != t->nil) {
     y = x;
-    if (key == x->key) {
-      free(z);            // 새로 만든 중복 노드 해제
-      return x;           // 기존 노드 반환
-    }
-    else if (key < x->key)
+    if (key < x->key)
       x = x->left;
     else
-      x = x->right;
+      x = x->right; // 중복 포함, 같아도 오른쪽으로 이동
   }
 
   // 부모 설정 및 삽입
@@ -194,26 +184,24 @@ node_t *rbtree_insert(rbtree *t, const key_t key) {
 }
 
 node_t *rbtree_find(const rbtree *t, const key_t key) {
-  // 루트부터 탐색 시작
   node_t *x = t->root;
+  node_t *res = NULL;
 
-  // nil 노드에 도달하거나 키를 찾을 때까지 반복
+  // 중복 키가 있을 경우, 가장 왼쪽(먼저 삽입된 노드) 찾기
   while (x != t->nil) {
-    // 키가 일치하면 해당 노드 반환
-    if (x->key == key) {
-      return x;
+    if (key == x->key) {
+      res = x;
+      break;  // 더 왼쪽에 같은 키가 있는지 계속 탐색
     }
-    // 키가 현재 노드보다 작으면 왼쪽 서브트리로 이동
     else if (key < x->key) {
       x = x->left;
     }
-    // 키가 현재 노드보다 크면 오른쪽 서브트리로 이동
     else {
       x = x->right;
     }
   }
-  // 찾지 못하면 nil 노드 반환
-  return NULL;
+
+  return res;
 }
 
 node_t *rbtree_min(const rbtree *t) {
@@ -234,12 +222,172 @@ node_t *rbtree_max(const rbtree *t) {
   return x;
 }
 
-int rbtree_erase(rbtree *t, node_t *p) {
-  // TODO: implement erase
+static void rbtree_transplant(rbtree *t, node_t *u, node_t *v) {
+  // u의 부모를 v로 교체
+  if (u->parent == t->nil) {
+    t->root = v;
+  } else if (u == u->parent->left) {
+    u->parent->left = v;
+  } else {
+    u->parent->right = v;
+  }
+  // v가 nil이 아니라면 v의 부모를 u의 부모로 설정
+  v->parent = u->parent;
+}
+
+static void delete_fixup(rbtree *t, node_t *x) {
+  // x가 루트가 아니고, BLACK일 때 속성 복구 수행
+  while (x != t->root && x->color == RBTREE_BLACK) {
+    if (x == x->parent->left) {
+      node_t *w = x->parent->right;
+
+      // 형제 노드 w가 RED인 경우
+      if (w->color == RBTREE_RED) {
+        w->color = RBTREE_BLACK;
+        x->parent->color = RBTREE_RED;
+        left_rotate(t, x->parent);
+        w = x->parent->right;
+      }
+      // 형제의 두 자식이 모두 BLACK인 경우
+      if (w->left->color == RBTREE_BLACK && w->right->color == RBTREE_BLACK) {
+        w->color = RBTREE_RED;
+        x = x->parent;
+      }
+      else {
+        // 형제의 오른쪽 자식이 BLACK인 경우
+        if (w->right->color == RBTREE_BLACK) {
+          w->left->color = RBTREE_BLACK;
+          w->color = RBTREE_RED;
+          right_rotate(t, w);
+          w = x->parent->right;
+        }
+        // 형제의 색을 부모 색으로 변경하고 회전
+        w->color = x->parent->color;
+        x->parent->color = RBTREE_BLACK;
+        w->right->color = RBTREE_BLACK;
+        left_rotate(t, x->parent);
+        x = t->root;
+      }
+    }
+    else {
+      node_t *w = x->parent->left;
+
+      // 형제 노드 w가 RED인 경우
+      if (w->color == RBTREE_RED) {
+        w->color = RBTREE_BLACK;
+        x->parent->color = RBTREE_RED;
+        right_rotate(t, x->parent);
+        w = x->parent->left;
+      }
+      // 형제의 두 자식이 모두 BLACK인 경우
+      if (w->right->color == RBTREE_BLACK && w->left->color == RBTREE_BLACK) {
+        w->color = RBTREE_RED;
+        x = x->parent;
+      }
+      else {
+        // 형제의 오른쪽 자식이 BLACK인 경우
+        if (w->left->color == RBTREE_BLACK) {
+          w->right->color = RBTREE_BLACK;
+          w->color = RBTREE_RED;
+          left_rotate(t, w);
+          w = x->parent->left;
+        }
+        // 형제의 색을 부모 색으로 변경하고 회전
+        w->color = x->parent->color;
+        x->parent->color = RBTREE_BLACK;
+        w->left->color = RBTREE_BLACK;
+        right_rotate(t, x->parent);
+        x = t->root;
+      }
+    }
+  }
+  // 루트는 항상 BLACK으로 유지
+  x->color = RBTREE_BLACK;
+}
+
+int rbtree_erase(rbtree *t, node_t *z) {
+  if (z == NULL) {
+    return 0;
+  }
+  
+  // 삭제할 노드 z 처리 시작
+  node_t *y = z;
+  color_t y_original_color = y->color;
+  node_t *x;
+
+  // 왼쪽 자식이 없는 경우
+  if (z->left == t->nil) {
+    x = z->right;
+    rbtree_transplant(t, z, z->right);
+  }
+  // 오른쪽 자식이 없는 경우
+  else if (z->right == t->nil) {
+    x = z->left;
+    rbtree_transplant(t, z, z->left);
+  }
+  // 양쪽 자식이 모두 있는 경우 (후임자 찾기)
+  else {
+    y = z->right;
+    while (y->left != t->nil) {
+      y = y->left;
+    }
+    y_original_color = y->color;
+    x = y->right;
+
+    if (x == t->nil) {
+      x->parent = t->nil;
+    }
+
+    if (y != z->right) {
+      rbtree_transplant(t, y, y->right);
+      y->right = z->right;
+      y->right->parent = y;
+    } else {
+      x->parent = y;
+    }
+
+    rbtree_transplant(t, z, y);
+    y->left = z->left;
+    y->left->parent = y;
+    y->color = z->color;
+  }
+
+  // 원래 색이 BLACK이면 속성 복구 수행
+  if (y_original_color == RBTREE_BLACK) {
+    delete_fixup(t, x);
+  }
+
+  // 삭제된 노드 메모리 해제
+  free(z);
+
   return 0;
 }
 
+// 중위 순회로 트리 값을 배열에 저장하는 재귀 함수
+static void to_array_rec(const rbtree *t, node_t *node, key_t *arr, size_t *idx, const size_t n) {
+  // 종료 조건: nil 노드이거나 배열이 가득 찼을 때
+  if (node == t->nil || *idx >= n) return;
+
+  // 왼쪽 서브트리 순회
+  to_array_rec(t, node->left, arr, idx, n);
+
+  if (*idx < n) {
+    // 현재 노드의 key를 배열에 저장
+    arr[*idx] = node->key;
+    (*idx)++;
+  }
+  // 오른쪽 서브트리 순회
+  to_array_rec(t, node->right, arr, idx, n);
+}
+
+// 트리 전체를 배열로 변환하는 함수
 int rbtree_to_array(const rbtree *t, key_t *arr, const size_t n) {
-  // TODO: implement to_array
-  return 0;
+  // 배열 인덱스 초기화
+  size_t idx = 0;
+
+  // 중위 순회 시작
+  to_array_rec(t, t->root, arr, &idx, n);
+
+  // 삽입된 원소 개수 반환
+  return (int)idx;
 }
